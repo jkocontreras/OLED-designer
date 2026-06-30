@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OLED Designer — SSD1306 1-bit</title>
+<style>
+  :root{
+    --bg:#101114; --panel:#17191e; --panel2:#1d2026; --line:#2a2e36;
+    --ink:#d7dae0; --dim:#7c828e; --accent:#9fd0ff; --accent2:#5aa7e8;
+    --pixel:#cfe9ff; --danger:#e87a7a;
+    font-size:14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Helvetica Neue", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  header{
+    display:flex; align-items:center; gap:14px; padding:8px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap;
+  }
+  header h1{font-size:13px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;}
+  header h1 span{color:var(--accent); font-weight:400;}
+  .hgroup{display:flex; align-items:center; gap:6px;}
+  .hgroup label{font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:.05em;}
+  button, select, input[type="text"], input[type="number"]{
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line);
+    border-radius:4px; padding:5px 9px; font-size:12px; cursor:pointer;
+    font-family:inherit;
+  }
+  input[type="text"], input[type="number"]{cursor:text;}
+  input[type="range"]{accent-color:var(--accent2); width:90px;}
+  button:hover, select:hover{border-color:var(--accent2);}
+  button.active{background:var(--accent2); color:#0b1016; border-color:var(--accent2); font-weight:600;}
+  button.danger{color:var(--danger);}
+  main{display:flex; flex:1; min-height:0;}
+  /* ---- barra de herramientas ---- */
+  #tools{
+    width:54px; background:var(--panel); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 0;
+  }
+  #tools button{
+    width:40px; height:40px; font-size:17px; display:flex;
+    align-items:center; justify-content:center; padding:0;
+  }
+  .colorSep{width:28px; border-top:1px solid var(--line); margin:6px 0;}
+  #tools .swatch{width:30px; height:30px; border-radius:50%;}
+  #tools .swatch.white{background:var(--pixel);}
+  #tools .swatch.black{background:#000;}
+  #tools .swatch.active{box-shadow:0 0 0 2px var(--accent2); border-color:var(--accent2);}
+  /* ---- lienzo ---- */
+  #stage{
+    flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:14px; overflow:auto; padding:16px; min-width:0;
+  }
+  #canvasWrap{position:relative; line-height:0;}
+  #cv{
+    image-rendering:pixelated; background:#000;
+    border:1px solid var(--line); cursor:crosshair; touch-action:none;
+  }
+  #status{font-size:11px; color:var(--dim); font-variant-numeric:tabular-nums; min-height:14px;}
+  /* vista 1:1 */
+  #realWrap{display:flex; flex-direction:column; align-items:center; gap:5px;}
+  #realWrap .cap{font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em;}
+  #real{
+    background:#000; border:6px solid #181a1f; border-radius:3px;
+    filter:drop-shadow(0 0 6px rgba(159,208,255,.25));
+    image-rendering:pixelated;
+  }
+  /* ---- panel derecho ---- */
+  #side{
+    width:272px; background:var(--panel); border-left:1px solid var(--line);
+    overflow-y:auto; display:flex; flex-direction:column;
+  }
+  .sec{border-bottom:1px solid var(--line); padding:11px 13px;}
+  .sec h2{
+    font-size:10px; text-transform:uppercase; letter-spacing:.1em;
+    color:var(--accent); margin-bottom:9px; font-weight:700;
+  }
+  .row{display:flex; align-items:center; gap:7px; margin-bottom:7px; flex-wrap:wrap;}
+  .row label{font-size:11px; color:var(--dim); min-width:52px;}
+  .row .val{font-size:11px; color:var(--ink); min-width:24px; text-align:right; font-variant-numeric:tabular-nums;}
+  .row input[type="text"]{flex:1; min-width:0;}
+  .row select{flex:1; min-width:0;}
+  .full{width:100%;}
+  /* fotogramas */
+  #frames{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;}
+  .fthumb{
+    border:2px solid var(--line); border-radius:3px; cursor:pointer;
+    background:#000; image-rendering:pixelated; padding:0; line-height:0;
+  }
+  .fthumb.cur{border-color:var(--accent);}
+  textarea#codeOut{
+    width:100%; height:110px; background:#0c0d10; color:#9fd0ff;
+    border:1px solid var(--line); border-radius:4px; font-family:ui-monospace,Menlo,monospace;
+    font-size:10px; padding:6px; resize:vertical; white-space:pre;
+  }
+  .hint{font-size:10px; color:var(--dim); line-height:1.45; margin-top:5px;}
+  kbd{
+    background:var(--panel2); border:1px solid var(--line); border-radius:3px;
+    padding:0 4px; font-size:10px; font-family:inherit;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OLED Designer <span>SSD1306 · 1 bit</span></h1>
+  <div class="hgroup">
+    <label>Orientación</label>
+    <button id="btnOrient" title="Rotar lienzo 90°">128 × 64</button>
+  </div>
+  <div class="hgroup">
+    <label>Zoom</label>
+    <input type="range" id="zoom" min="3" max="12" value="6">
+  </div>
+  <div class="hgroup">
+    <button id="btnGrid" class="active" title="Mostrar retícula">Retícula</button>
+    <button id="btnInvert" title="Invertir todos los píxeles">Invertir</button>
+    <button id="btnUndo" title="Deshacer (Ctrl+Z)">↩ Deshacer</button>
+    <button id="btnClear" class="danger" title="Borrar fotograma">Borrar</button>
+  </div>
+  <div class="hgroup">
+    <label>Desplazar</label>
+    <button data-shift="0,-1">↑</button><button data-shift="0,1">↓</button>
+    <button data-shift="-1,0">←</button><button data-shift="1,0">→</button>
+  </div>
+</header>
+
+<main>
+  <nav id="tools">
+    <button data-tool="pen" class="active" title="Lápiz (B)">✏️</button>
+    <button data-tool="erase" title="Borrador (E)">⌫</button>
+    <button data-tool="line" title="Línea (L)">╱</button>
+    <button data-tool="rect" title="Rectángulo (R)">▭</button>
+    <button data-tool="frect" title="Rectángulo relleno">▬</button>
+    <button data-tool="circ" title="Círculo (C)">◯</button>
+    <button data-tool="fcirc" title="Círculo relleno">⬤</button>
+    <button data-tool="fill" title="Rellenar zona (F)">🪣</button>
+    <div class="colorSep"></div>
+    <button id="colWhite" class="swatch white active" title="Dibujar en blanco (X alterna)"></button>
+    <button id="colBlack" class="swatch black" title="Dibujar en negro / invertido (X alterna)"></button>
+  </nav>
+
+  <section id="stage">
+    <div id="canvasWrap"><canvas id="cv"></canvas></div>
+    <div id="status"></div>
+    <div id="realWrap">
+      <canvas id="real"></canvas>
+      <div class="cap">Vista previa 1:1 — tamaño aproximado real</div>
+    </div>
+  </section>
+
+  <aside id="side">
+
+    <div class="sec">
+      <h2>Texto</h2>
+      <div class="row"><input type="text" id="txtInput" placeholder="Escribe aquí… (120 BPM)" class="full"></div>
+      <div class="row">
+        <label>Fuente</label>
+        <select id="fontSel">
+          <option value="monospace">monospace (sistema)</option>
+          <option value="sans-serif">sans-serif (sistema)</option>
+          <option value="serif">serif (sistema)</option>
+        </select>
+      </div>
+      <div class="row">
+        <button id="btnLoadFont" class="full">＋ Cargar TTF / OTF / WOFF propia</button>
+        <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2" hidden multiple>
+      </div>
+      <div class="row">
+        <label>Tamaño</label><input type="range" id="txtSize" min="6" max="64" value="14"><span class="val" id="txtSizeV">14</span>
+      </div>
+      <div class="row">
+        <label>Umbral</label><input type="range" id="txtThr" min="20" max="235" value="128"><span class="val" id="txtThrV">128</span>
+      </div>
+      <div class="row">
+        <label>Color</label>
+        <button id="txtColW" class="active" style="flex:1">Blanco</button>
+        <button id="txtColB" style="flex:1">Negro (invertido)</button>
+      </div>
+      <div class="row"><button id="btnStampText" class="full">Colocar texto en el lienzo</button></div>
+      <p class="hint">Después de pulsar, mueve el cursor sobre el lienzo y haz clic para fijar. <kbd>Esc</kbd> cancela. «Negro» pinta el texto apagado — úsalo sobre una zona rellena en blanco para texto invertido. El umbral controla cuánto del trazo sobrevive a 1 bit.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Fuente → Adafruit GFX (.h)</h2>
+      <div class="row">
+        <label>Fuente</label>
+        <select id="gfxFont" class="full" style="flex:1">
+          <option value="monospace">monospace (sistema)</option>
+          <option value="sans-serif">sans-serif (sistema)</option>
+          <option value="serif">serif (sistema)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Tamaño px</label><input type="range" id="gfxSize" min="6" max="48" value="20"><span class="val" id="gfxSizeV">20</span>
+      </div>
+      <div class="row">
+        <label>Umbral</label><input type="range" id="gfxThr" min="20" max="235" value="128"><span class="val" id="gfxThrV">128</span>
+      </div>
+      <div class="row">
+        <label>Glifos</label>
+        <select id="gfxRange" class="full" style="flex:1">
+          <option value="32-126">ASCII completo (0x20–0x7E)</option>
+          <option value="45-58" selected>BPM: - . / 0–9 :  (0x2D–0x3A)</option>
+          <option value="48-57">Solo dígitos 0–9 (0x30–0x39)</option>
+          <option value="32-90">Mayúsc. + dígitos + símbolos (0x20–0x5A)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Nombre</label><input type="text" id="gfxName" placeholder="MiFuente20" class="full">
+      </div>
+      <div class="row"><button id="btnExportFont" class="full">Generar y descargar .h</button></div>
+      <p class="hint">Convierte tu tipografía al formato de fuente de Adafruit GFX. Tu socio hace <b>#include "TuFuente.h"</b> y <b>display.setFont(&TuFuente)</b> — ninguno necesita la herramienta de Adafruit. Rasteriza con el mismo umbral que ves al estampar texto, así el resultado coincide. Rangos chicos = menos flash.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Imagen</h2>
+      <div class="row">
+        <button id="btnLoadImg" class="full">＋ Cargar PNG / JPG</button>
+        <input type="file" id="imgFile" accept="image/*" hidden>
+      </div>
+      <div class="row">
+        <label>Ancho px</label><input type="range" id="imgW" min="8" max="128" value="48"><span class="val" id="imgWV">48</span>
+      </div>
+      <div class="row">
+        <label>Modo</label>
+        <select id="imgMode">
+          <option value="thr">Umbral simple</option>
+          <option value="bayer">Dithering Bayer 4×4</option>
+          <option value="fs">Dithering Floyd–Steinberg</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Umbral</label><input type="range" id="imgThr" min="20" max="235" value="128"><span class="val" id="imgThrV">128</span>
+      </div>
+      <div class="row"><button id="btnStampImg" class="full" disabled>Colocar imagen en el lienzo</button></div>
+      <p class="hint">Umbral simple para logos y formas planas; dithering para fotos o degradados.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Onda LFO</h2>
+      <div class="row">
+        <label>Forma</label>
+        <select id="wvShape" class="full" style="flex:1">
+          <option value="sin">Sin — senoidal</option>
+          <option value="square">Square — cuadrada</option>
+          <option value="ramp">Ramp — diente ascendente</option>
+          <option value="iramp">Inverted Ramp — descendente</option>
+          <option value="sh">Random — Sample &amp; Hold</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Ancho</label><input type="range" id="wvW" min="8" max="128" value="64"><span class="val" id="wvWV">64</span>
+      </div>
+      <div class="row">
+        <label>Alto</label><input type="range" id="wvH" min="4" max="64" value="20"><span class="val" id="wvHV">20</span>
+      </div>
+      <div class="row">
+        <label id="wvCycLbl">Ciclos</label><input type="range" id="wvCyc" min="1" max="12" value="2"><span class="val" id="wvCycV">2</span>
+      </div>
+      <div class="row">
+        <label>Fase</label><input type="range" id="wvPhase" min="0" max="100" value="0"><span class="val" id="wvPhaseV">0</span>
+      </div>
+      <div class="row">
+        <label>Grosor</label><input type="range" id="wvThick" min="1" max="4" value="1"><span class="val" id="wvThickV">1</span>
+      </div>
+      <div class="row">
+        <label>Color</label>
+        <button id="wvColW" class="active" style="flex:1">Blanco</button>
+        <button id="wvColB" style="flex:1">Negro</button>
+      </div>
+      <div class="row"><button id="btnStampWave" class="full">Generar y colocar onda</button></div>
+      <p class="hint">«Random» traza un escalón nuevo por cada paso (slider Ciclos); vuelve a pulsar para regenerar otro patrón aleatorio. Las transiciones verticales se dibujan completas, igual que las dibujaste a mano.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Campo dinámico — BPM</h2>
+      <div class="row">
+        <button id="btnPlaceField" class="full">Definir caja (arrastrar en el lienzo)</button>
+      </div>
+      <div class="row">
+        <label>Muestra</label><input type="text" id="bpmSample" value="120" class="full">
+      </div>
+      <div class="row">
+        <label>Fuente</label>
+        <select id="bpmFont" class="full" style="flex:1">
+          <option value="monospace">monospace (sistema)</option>
+          <option value="sans-serif">sans-serif (sistema)</option>
+          <option value="serif">serif (sistema)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Tamaño</label><input type="range" id="bpmSize" min="6" max="48" value="20"><span class="val" id="bpmSizeV">20</span>
+      </div>
+      <div class="row">
+        <label>Umbral</label><input type="range" id="bpmThr" min="20" max="235" value="128"><span class="val" id="bpmThrV">128</span>
+      </div>
+      <div class="row">
+        <label>Alinear</label>
+        <button id="bpmAlL" style="flex:1">Izq</button>
+        <button id="bpmAlC" class="active" style="flex:1">Centro</button>
+        <button id="bpmAlR" style="flex:1">Der</button>
+      </div>
+      <div class="row"><button id="btnClearField" class="danger full">Quitar campo</button></div>
+      <p class="hint">Esta zona queda <b>reservada</b>: no se hornea en el bitmap. El número que ves es solo previsualización (tinte distinto). Tu socio la rellena en vivo con la fuente. Usa la misma fuente cargada en la sección Texto.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Fotogramas (animación)</h2>
+      <div id="frames"></div>
+      <div class="row">
+        <button id="btnAddFrame">＋ Nuevo</button>
+        <button id="btnDupFrame">⧉ Duplicar</button>
+        <button id="btnDelFrame" class="danger">✕</button>
+      </div>
+      <div class="row">
+        <label>Onion</label><input type="checkbox" id="onion" checked>
+        <label style="min-width:auto">FPS</label><input type="number" id="fps" min="1" max="30" value="12" style="width:52px">
+        <button id="btnPlay">▶ Reproducir</button>
+      </div>
+      <p class="hint">El SSD1306 por I2C redibuja el buffer completo: en la práctica 15–30 fps. Diseña la animación a esa cadencia.</p>
+    </div>
+
+    <div class="sec">
+      <h2>Exportar</h2>
+      <div class="row">
+        <button id="btnPng1">PNG 1×</button>
+        <button id="btnPng8">PNG 8×</button>
+        <button id="btnPngAll">Todos los frames</button>
+      </div>
+      <div class="row">
+        <select id="codeFmt">
+          <option value="handoff">★ Handoff Arduino (fondo + BPM en vivo)</option>
+          <option value="carray">C array (Adafruit GFX, PROGMEM)</option>
+          <option value="parray">Lista Python (luma.oled / Pillow)</option>
+          <option value="xbm">XBM</option>
+        </select>
+        <button id="btnGenCode">Generar</button>
+      </div>
+      <textarea id="codeOut" spellcheck="false" placeholder="// El frame actual como datos listos para pegar"></textarea>
+      <p class="hint"><b>Handoff Arduino</b> es el paquete para tu socio: el fondo estático como bitmap <b>PROGMEM</b> (una línea <b>drawBitmap</b>) más el snippet del BPM en vivo, con las coordenadas de la caja ya calculadas. El bitmap excluye el campo BPM automáticamente.</p>
+    </div>
+
+  </aside>
+</main>
+
+<script>
+(()=>{
+// ---------- estado ----------
+let W=128, H=64;
+let frames=[new Uint8Array(W*H)];
+let cur=0;
+let tool='pen';
+let drawColor=1;          // 1 = blanco, 0 = negro (invertido)
+let zoom=6, showGrid=true;
+let undoStack=[]; const UNDO_MAX=60;
+let drag=null;            // {x0,y0,x1,y1, snapshot}
+let stamp=null;           // {w,h,data:Uint8Array, ghost:{x,y}}
+let playTimer=null;
+let customFontCount=0;
+let loadedImg=null;
+let bpmField=null;          // {x,y,w,h, font, size, thr, align, sample}
+let placingField=false;
+
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const real=document.getElementById('real'), rctx=real.getContext('2d');
+const status=document.getElementById('status');
+
+const buf=()=>frames[cur];
+const idx=(x,y)=>y*W+x;
+const inB=(x,y)=>x>=0&&y>=0&&x<W&&y<H;
+
+// ---------- render ----------
+function resize(){
+  cv.width=W*zoom; cv.height=H*zoom;
+  real.width=W; real.height=H;
+  real.style.width=W+'px'; real.style.height=H+'px';
+  document.getElementById('btnOrient').textContent=W+' × '+H;
+  render();
+}
+function render(previewBuf){
+  const b=previewBuf||buf();
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,cv.width,cv.height);
+  // onion skin
+  if(document.getElementById('onion').checked && cur>0 && !previewBuf){
+    const p=frames[cur-1];
+    ctx.fillStyle='rgba(159,208,255,.18)';
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++)
+      if(p[idx(x,y)]) ctx.fillRect(x*zoom,y*zoom,zoom,zoom);
+  }
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--pixel');
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++)
+    if(b[idx(x,y)]) ctx.fillRect(x*zoom,y*zoom,zoom,zoom);
+  // fantasma de estampa
+  if(stamp&&stamp.ghost){
+    ctx.fillStyle = stamp.color ? 'rgba(159,208,255,.55)' : 'rgba(120,60,60,.7)';
+    for(let y=0;y<stamp.h;y++)for(let x=0;x<stamp.w;x++){
+      if(!stamp.data[y*stamp.w+x])continue;
+      const gx=stamp.ghost.x+x, gy=stamp.ghost.y+y;
+      if(inB(gx,gy)) ctx.fillRect(gx*zoom,gy*zoom,zoom,zoom);
+    }
+  }
+  // campo dinámico BPM: caja reservada + previsualización (overlay, no horneado)
+  if(bpmField){
+    drawBpmOverlay();
+  }
+  if(showGrid&&zoom>=5){
+    ctx.strokeStyle='rgba(255,255,255,.07)'; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let x=1;x<W;x++){ctx.moveTo(x*zoom+.5,0);ctx.lineTo(x*zoom+.5,cv.height);}
+    for(let y=1;y<H;y++){ctx.moveTo(0,y*zoom+.5);ctx.lineTo(cv.width,y*zoom+.5);}
+    ctx.stroke();
+    // guías cada 8 px (páginas del SSD1306)
+    ctx.strokeStyle='rgba(159,208,255,.14)';
+    ctx.beginPath();
+    for(let x=8;x<W;x+=8){ctx.moveTo(x*zoom+.5,0);ctx.lineTo(x*zoom+.5,cv.height);}
+    for(let y=8;y<H;y+=8){ctx.moveTo(0,y*zoom+.5);ctx.lineTo(cv.width,y*zoom+.5);}
+    ctx.stroke();
+  }
+  renderReal(b);
+  renderThumbs();
+}
+function renderReal(b){
+  const id=rctx.createImageData(W,H);
+  for(let i=0;i<W*H;i++){
+    const v=b[i]?1:0, o=i*4;
+    id.data[o]=v?207:0; id.data[o+1]=v?233:0; id.data[o+2]=v?255:0; id.data[o+3]=255;
+  }
+  rctx.putImageData(id,0,0);
+}
+function renderThumbs(){
+  const cont=document.getElementById('frames');
+  if(cont.children.length!==frames.length){
+    cont.innerHTML='';
+    frames.forEach((f,i)=>{
+      const c=document.createElement('canvas');
+      c.className='fthumb'; c.width=W; c.height=H;
+      c.style.width=(W/2)+'px'; c.style.height=(H/2)+'px';
+      c.title='Fotograma '+(i+1);
+      c.onclick=()=>{cur=i; render();};
+      cont.appendChild(c);
+    });
+  }
+  [...cont.children].forEach((c,i)=>{
+    c.classList.toggle('cur',i===cur);
+    if(c.width!==W){c.width=W;c.height=H;c.style.width=(W/2)+'px';c.style.height=(H/2)+'px';}
+    const x=c.getContext('2d'), id=x.createImageData(W,H), f=frames[i];
+    for(let p=0;p<W*H;p++){const v=f[p]?255:0,o=p*4;id.data[o]=v;id.data[o+1]=v;id.data[o+2]=v;id.data[o+3]=255;}
+    x.putImageData(id,0,0);
+  });
+}
+
+// ---------- deshacer ----------
+function snapshot(){
+  undoStack.push({frame:cur, data:buf().slice()});
+  if(undoStack.length>UNDO_MAX)undoStack.shift();
+}
+function undo(){
+  const s=undoStack.pop(); if(!s)return;
+  if(s.frame<frames.length){cur=s.frame; frames[cur]=s.data;}
+  render();
+}
+
+// ---------- primitivas ----------
+function setPx(b,x,y,v){if(inB(x,y))b[idx(x,y)]=v;}
+function dLine(b,x0,y0,x1,y1,v){
+  let dx=Math.abs(x1-x0),sx=x0<x1?1:-1,dy=-Math.abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;
+  for(;;){setPx(b,x0,y0,v);if(x0===x1&&y0===y1)break;const e2=2*err;
+    if(e2>=dy){err+=dy;x0+=sx;} if(e2<=dx){err+=dx;y0+=sy;}}
+}
+function dRect(b,x0,y0,x1,y1,v,fill){
+  const xa=Math.min(x0,x1),xb=Math.max(x0,x1),ya=Math.min(y0,y1),yb=Math.max(y0,y1);
+  if(fill){for(let y=ya;y<=yb;y++)for(let x=xa;x<=xb;x++)setPx(b,x,y,v);}
+  else{dLine(b,xa,ya,xb,ya,v);dLine(b,xa,yb,xb,yb,v);dLine(b,xa,ya,xa,yb,v);dLine(b,xb,ya,xb,yb,v);}
+}
+function dCirc(b,cx,cy,r,v,fill){
+  let x=r,y=0,err=1-r;
+  const plot=(px,py)=>{
+    if(fill){dLine(b,cx-px,cy+py,cx+px,cy+py,v);dLine(b,cx-px,cy-py,cx+px,cy-py,v);
+             dLine(b,cx-py,cy+px,cx+py,cy+px,v);dLine(b,cx-py,cy-px,cx+py,cy-px,v);}
+    else{[[px,py],[-px,py],[px,-py],[-px,-py],[py,px],[-py,px],[py,-px],[-py,-px]]
+      .forEach(([a,c])=>setPx(b,cx+a,cy+c,v));}
+  };
+  while(x>=y){plot(x,y);y++;if(err<0)err+=2*y+1;else{x--;err+=2*(y-x)+1;}}
+}
+function flood(b,x,y,v){
+  if(!inB(x,y))return;
+  const target=b[idx(x,y)];
+  if(target===v)return;
+  const q=[[x,y]];
+  while(q.length){
+    const[a,c]=q.pop();
+    if(!inB(a,c)||b[idx(a,c)]!==target)continue;
+    b[idx(a,c)]=v;
+    q.push([a+1,c],[a-1,c],[a,c+1],[a,c-1]);
+  }
+}
+
+// ---------- punteros ----------
+function pxFromEvent(e){
+  const r=cv.getBoundingClientRect();
+  return [Math.floor((e.clientX-r.left)/zoom), Math.floor((e.clientY-r.top)/zoom)];
+}
+cv.addEventListener('pointerdown',e=>{
+  e.preventDefault(); cv.setPointerCapture(e.pointerId);
+  const[x,y]=pxFromEvent(e);
+  if(placingField){ drag={mode:'bpmbox',x0:x,y0:y,x1:x,y1:y}; render(); return; }
+  if(stamp){ // fijar estampa
+    snapshot();
+    const sc=stamp.color;
+    for(let sy=0;sy<stamp.h;sy++)for(let sx=0;sx<stamp.w;sx++)
+      if(stamp.data[sy*stamp.w+sx])setPx(buf(),x+sx,y+sy,sc);
+    stamp=null; render(); return;
+  }
+  snapshot();
+  if(tool==='pen'||tool==='erase'){drag={mode:'free',v:tool==='pen'?drawColor:0,last:[x,y]};setPx(buf(),x,y,drag.v);render();}
+  else if(tool==='fill'){flood(buf(),x,y,drawColor);render();}
+  else{drag={mode:tool,x0:x,y0:y,base:buf().slice()};}
+});
+cv.addEventListener('pointermove',e=>{
+  const[x,y]=pxFromEvent(e);
+  status.textContent=inB(x,y)?`x ${x} · y ${y}`:'';
+  if(stamp){stamp.ghost={x,y};render();return;}
+  if(drag&&drag.mode==='bpmbox'){ drag.x1=x; drag.y1=y; render(); return; }
+  if(!drag)return;
+  if(drag.mode==='free'){
+    dLine(buf(),drag.last[0],drag.last[1],x,y,drag.v);drag.last=[x,y];render();
+  }else{
+    const p=drag.base.slice();
+    if(drag.mode==='line')dLine(p,drag.x0,drag.y0,x,y,drawColor);
+    if(drag.mode==='rect')dRect(p,drag.x0,drag.y0,x,y,drawColor,false);
+    if(drag.mode==='frect')dRect(p,drag.x0,drag.y0,x,y,drawColor,true);
+    if(drag.mode==='circ'||drag.mode==='fcirc'){
+      const r=Math.round(Math.hypot(x-drag.x0,y-drag.y0));
+      dCirc(p,drag.x0,drag.y0,r,drawColor,drag.mode==='fcirc');
+    }
+    render(p);
+  }
+});
+cv.addEventListener('pointerup',e=>{
+  if(!drag)return;
+  const[x,y]=pxFromEvent(e);
+  if(drag.mode==='bpmbox'){
+    const xa=Math.min(drag.x0,x),xb=Math.max(drag.x0,x),ya=Math.min(drag.y0,y),yb=Math.max(drag.y0,y);
+    if(xb-xa>=4&&yb-ya>=4){
+      bpmField={x:xa,y:ya,w:xb-xa+1,h:yb-ya+1,
+        font:document.getElementById('bpmFont').value,
+        size:+document.getElementById('bpmSize').value,
+        thr:+document.getElementById('bpmThr').value,
+        align:bpmAlign, sample:document.getElementById('bpmSample').value};
+    }
+    placingField=false; drag=null;
+    document.getElementById('btnPlaceField').classList.remove('active');
+    document.getElementById('btnPlaceField').textContent='Definir caja (arrastrar en el lienzo)';
+    status.textContent=''; render(); return;
+  }
+  if(drag.mode!=='free'){
+    const b=buf();
+    if(drag.mode==='line')dLine(b,drag.x0,drag.y0,x,y,drawColor);
+    if(drag.mode==='rect')dRect(b,drag.x0,drag.y0,x,y,drawColor,false);
+    if(drag.mode==='frect')dRect(b,drag.x0,drag.y0,x,y,drawColor,true);
+    if(drag.mode==='circ'||drag.mode==='fcirc'){
+      const r=Math.round(Math.hypot(x-drag.x0,y-drag.y0));
+      dCirc(b,drag.x0,drag.y0,r,drawColor,drag.mode==='fcirc');
+    }
+  }
+  drag=null; render();
+});
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  if(e.key==='Escape'&&stamp){stamp=null;render();}
+  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();}
+  if(e.key==='x'||e.key==='X')setColor(drawColor?0:1);
+  const map={b:'pen',e:'erase',l:'line',r:'rect',c:'circ',f:'fill'};
+  if(map[e.key])selectTool(map[e.key]);
+});
+
+// ---------- herramientas / cabecera ----------
+function selectTool(t){
+  tool=t;
+  document.querySelectorAll('#tools button[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));
+}
+document.querySelectorAll('#tools button[data-tool]').forEach(b=>b.onclick=()=>selectTool(b.dataset.tool));
+function setColor(v){
+  drawColor=v;
+  document.getElementById('colWhite').classList.toggle('active',v===1);
+  document.getElementById('colBlack').classList.toggle('active',v===0);
+}
+document.getElementById('colWhite').onclick=()=>setColor(1);
+document.getElementById('colBlack').onclick=()=>setColor(0);
+document.getElementById('zoom').oninput=e=>{zoom=+e.target.value;resize();};
+document.getElementById('btnGrid').onclick=e=>{showGrid=!showGrid;e.target.classList.toggle('active',showGrid);render();};
+document.getElementById('btnInvert').onclick=()=>{snapshot();const b=buf();for(let i=0;i<b.length;i++)b[i]=b[i]?0:1;render();};
+document.getElementById('btnClear').onclick=()=>{snapshot();buf().fill(0);render();};
+document.getElementById('btnUndo').onclick=undo;
+document.querySelectorAll('[data-shift]').forEach(b=>b.onclick=()=>{
+  snapshot();
+  const[dx,dy]=b.dataset.shift.split(',').map(Number);
+  const o=buf(), n=new Uint8Array(W*H);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+    const sx=x-dx, sy=y-dy;
+    if(inB(sx,sy))n[idx(x,y)]=o[idx(sx,sy)];
+  }
+  frames[cur]=n; render();
+});
+document.getElementById('btnOrient').onclick=()=>{
+  undoStack=[];
+  frames=frames.map(f=>{
+    const n=new Uint8Array(W*H);
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++)
+      n[x*H+(H-1-y)]=f[y*W+x];   // rotación 90° horaria: nuevo ancho = H
+    return n;
+  });
+  [W,H]=[H,W];
+  resize();
+};
+
+// ---------- texto ----------
+const txtSize=document.getElementById('txtSize'), txtThr=document.getElementById('txtThr');
+txtSize.oninput=()=>document.getElementById('txtSizeV').textContent=txtSize.value;
+txtThr.oninput=()=>document.getElementById('txtThrV').textContent=txtThr.value;
+document.getElementById('btnLoadFont').onclick=()=>document.getElementById('fontFile').click();
+document.getElementById('fontFile').onchange=async e=>{
+  for(const f of e.target.files){
+    const name='custom-'+(++customFontCount)+'-'+f.name.replace(/\.[^.]+$/,'').replace(/[^\w-]/g,'');
+    try{
+      const face=new FontFace(name, await f.arrayBuffer());
+      await face.load(); document.fonts.add(face);
+      const opt=document.createElement('option');
+      opt.value=name; opt.textContent='● '+f.name;
+      document.getElementById('fontSel').appendChild(opt);
+      document.getElementById('fontSel').value=name;
+      const opt2=opt.cloneNode(true);
+      document.getElementById('bpmFont').appendChild(opt2);
+      document.getElementById('gfxFont').appendChild(opt.cloneNode(true));
+      if(!document.getElementById('gfxName').value)
+        document.getElementById('gfxName').value=f.name.replace(/\.[^.]+$/,'').replace(/[^A-Za-z0-9]/g,'')+document.getElementById('gfxSize').value;
+    }catch(err){alert('No se pudo cargar '+f.name+': '+err.message);}
+  }
+  e.target.value='';
+};
+
+// ---------- conversor de fuente a Adafruit GFX ----------
+['gfxSize','gfxThr'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.oninput=()=>document.getElementById(id+'V').textContent=el.value;
+});
+// Construye la estructura GFXfont (mismo formato que fontconvert de Adafruit):
+// cada glifo se empaqueta MSB primero, fila por fila, alineado a byte.
+function buildGFXFont(family,sizePx,first,last,thr){
+  const c=document.createElement('canvas'), cx=c.getContext('2d',{willReadFrequently:true});
+  const pad=Math.ceil(sizePx*0.6)+4;
+  const ch=Math.ceil(sizePx*2)+pad*2;
+  const baseline=Math.ceil(sizePx*1.4)+pad;
+  cx.font=sizePx+'px "'+family+'"';
+  const tm=cx.measureText('Hg');
+  let yAdvance=Math.round(sizePx*1.35);
+  if(tm.fontBoundingBoxAscent&&tm.fontBoundingBoxDescent)
+    yAdvance=Math.round(tm.fontBoundingBoxAscent+tm.fontBoundingBoxDescent);
+  const bitmaps=[], glyphs=[];
+  for(let code=first;code<=last;code++){
+    const s=String.fromCharCode(code);
+    cx.font=sizePx+'px "'+family+'"';
+    const adv=Math.round(cx.measureText(s).width);
+    c.width=adv+pad*2+Math.ceil(sizePx);
+    c.height=ch;
+    cx.font=sizePx+'px "'+family+'"';
+    cx.textBaseline='alphabetic';
+    cx.clearRect(0,0,c.width,c.height);
+    cx.fillStyle='#fff';
+    const penX=pad;
+    cx.fillText(s,penX,baseline);
+    const img=cx.getImageData(0,0,c.width,c.height).data;
+    const on=(x,y)=>{const o=(y*c.width+x)*4;
+      const val=(0.299*img[o]+0.587*img[o+1]+0.114*img[o+2])*(img[o+3]/255);
+      return val>thr;};
+    let xMin=1e9,yMin=1e9,xMax=-1,yMax=-1;
+    for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++)
+      if(on(x,y)){if(x<xMin)xMin=x;if(x>xMax)xMax=x;if(y<yMin)yMin=y;if(y>yMax)yMax=y;}
+    const bo=bitmaps.length;
+    let gw=0,gh=0,xo=0,yo=0;
+    if(xMax>=0){
+      gw=xMax-xMin+1; gh=yMax-yMin+1; xo=xMin-penX; yo=yMin-baseline;
+      let cur=0,bc=0;
+      for(let y=yMin;y<=yMax;y++)for(let x=xMin;x<=xMax;x++){
+        cur=(cur<<1)|(on(x,y)?1:0); bc++;
+        if(bc===8){bitmaps.push(cur);cur=0;bc=0;}
+      }
+      if(bc>0)bitmaps.push(cur<<(8-bc));
+    }
+    glyphs.push({bo,gw,gh,adv,xo,yo,code});
+  }
+  return {bitmaps,glyphs,yAdvance,first,last};
+}
+window.buildGFXFont=buildGFXFont;  // expuesto para verificación
+
+function gfxToHeader(F,name){
+  const hx=v=>'0x'+(v&0xFF).toString(16).padStart(2,'0');
+  const bmRows=[];
+  for(let i=0;i<F.bitmaps.length;i+=12)
+    bmRows.push('  '+F.bitmaps.slice(i,i+12).map(hx).join(', '));
+  const glRows=F.glyphs.map(g=>{
+    const cc=(g.code>=32&&g.code<127)?String.fromCharCode(g.code):'';
+    return `  { ${String(g.bo).padStart(5)}, ${String(g.gw).padStart(3)}, ${String(g.gh).padStart(3)}, `+
+           `${String(g.adv).padStart(3)}, ${String(g.xo).padStart(4)}, ${String(g.yo).padStart(4)} }`+
+           `,   // 0x${g.code.toString(16).toUpperCase().padStart(2,'0')} '${cc}'`;
+  });
+  const guard='_'+name.toUpperCase()+'_H_';
+  return `// ${name}.h — fuente Adafruit GFX generada por OLED Designer
+// Uso:  #include "${name}.h"
+//       display.setFont(&${name});   // display.setFont(NULL) vuelve a la integrada
+#ifndef ${guard}
+#define ${guard}
+#include <Adafruit_GFX.h>
+
+const uint8_t ${name}Bitmaps[] PROGMEM = {
+${bmRows.join(',\n')} };
+
+const GFXglyph ${name}Glyphs[] PROGMEM = {
+${glRows.join('\n')}
+};
+
+const GFXfont ${name} PROGMEM = {
+  (uint8_t  *)${name}Bitmaps,
+  (GFXglyph *)${name}Glyphs,
+  0x${F.first.toString(16).toUpperCase()}, 0x${F.last.toString(16).toUpperCase()}, ${F.yAdvance} };
+
+#endif // ${guard}
+`;
+}
+function dlText(text,filename){
+  const blob=new Blob([text],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+document.getElementById('btnExportFont').onclick=()=>{
+  const family=document.getElementById('gfxFont').value;
+  const size=+document.getElementById('gfxSize').value;
+  const thr=+document.getElementById('gfxThr').value;
+  const [a,b]=document.getElementById('gfxRange').value.split('-').map(Number);
+  let name=(document.getElementById('gfxName').value||'').replace(/[^A-Za-z0-9_]/g,'');
+  if(!name||/^[0-9]/.test(name))name='Fuente'+(name||size);
+  const F=buildGFXFont(family,size,a,b,thr);
+  const h=gfxToHeader(F,name);
+  dlText(h,name+'.h');
+  const bytes=F.bitmaps.length;
+  document.getElementById('codeOut').value=
+    `// Descargado: ${name}.h  (${F.glyphs.length} glifos, ${bytes} bytes de bitmap, yAdvance=${F.yAdvance})\n`+
+    `// En tu sketch:\n//   #include "${name}.h"\n//   display.setFont(&${name});\n//   display.print(bpm);`;
+};
+let txtColor=1;
+document.getElementById('txtColW').onclick=()=>{txtColor=1;document.getElementById('txtColW').classList.add('active');document.getElementById('txtColB').classList.remove('active');};
+document.getElementById('txtColB').onclick=()=>{txtColor=0;document.getElementById('txtColB').classList.add('active');document.getElementById('txtColW').classList.remove('active');};
+document.getElementById('btnStampText').onclick=()=>{
+  const text=document.getElementById('txtInput').value;
+  if(!text)return;
+  const size=+txtSize.value, thr=+txtThr.value;
+  const font=size+'px "'+document.getElementById('fontSel').value+'"';
+  const off=document.createElement('canvas'), oc=off.getContext('2d');
+  oc.font=font;
+  const m=oc.measureText(text);
+  const asc=Math.ceil(m.actualBoundingBoxAscent||size*0.8);
+  const desc=Math.ceil(m.actualBoundingBoxDescent||size*0.25);
+  off.width=Math.ceil(m.width)+2; off.height=asc+desc+2;
+  oc.font=font; oc.fillStyle='#fff'; oc.textBaseline='alphabetic';
+  oc.fillText(text,1,asc+1);
+  makeStampFromCanvas(off,thr,'thr',txtColor);
+};
+
+// ---------- imagen ----------
+const imgW=document.getElementById('imgW'), imgThr=document.getElementById('imgThr');
+imgW.oninput=()=>document.getElementById('imgWV').textContent=imgW.value;
+imgThr.oninput=()=>document.getElementById('imgThrV').textContent=imgThr.value;
+document.getElementById('btnLoadImg').onclick=()=>document.getElementById('imgFile').click();
+document.getElementById('imgFile').onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const img=new Image();
+  img.onload=()=>{loadedImg=img;document.getElementById('btnStampImg').disabled=false;};
+  img.src=URL.createObjectURL(f);
+  e.target.value='';
+};
+document.getElementById('btnStampImg').onclick=()=>{
+  if(!loadedImg)return;
+  const w=Math.min(+imgW.value,W);
+  const h=Math.max(1,Math.round(w*loadedImg.height/loadedImg.width));
+  const off=document.createElement('canvas');off.width=w;off.height=h;
+  const oc=off.getContext('2d');
+  oc.drawImage(loadedImg,0,0,w,h);
+  makeStampFromCanvas(off,+imgThr.value,document.getElementById('imgMode').value);
+};
+const BAYER=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+function makeStampFromCanvas(off,thr,mode,color){
+  const oc=off.getContext('2d');
+  const d=oc.getImageData(0,0,off.width,off.height);
+  const w=off.width,h=off.height;
+  const g=new Float32Array(w*h);
+  for(let i=0;i<w*h;i++){
+    const o=i*4,a=d.data[o+3]/255;
+    g[i]=(0.299*d.data[o]+0.587*d.data[o+1]+0.114*d.data[o+2])*a;
+  }
+  const out=new Uint8Array(w*h);
+  if(mode==='bayer'){
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const t=(BAYER[y%4][x%4]+0.5)/16*255;
+      out[y*w+x]=g[y*w+x]>t*(thr/128)?1:0;
+    }
+  }else if(mode==='fs'){
+    const e=g.slice();
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x, old=e[i], v=old>thr?255:0;
+      out[i]=v?1:0;
+      const err=old-v;
+      if(x+1<w)e[i+1]+=err*7/16;
+      if(y+1<h){if(x>0)e[i+w-1]+=err*3/16;e[i+w]+=err*5/16;if(x+1<w)e[i+w+1]+=err*1/16;}
+    }
+  }else{
+    for(let i=0;i<w*h;i++)out[i]=g[i]>thr?1:0;
+  }
+  stamp={w,h,data:out,color:(color===undefined?1:color),ghost:{x:Math.floor((W-w)/2),y:Math.floor((H-h)/2)}};
+  render();
+  status.textContent='Haz clic en el lienzo para fijar — Esc para cancelar';
+}
+
+// ---------- onda LFO ----------
+['wvW','wvH','wvCyc','wvPhase','wvThick'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.oninput=()=>document.getElementById(id+'V').textContent=el.value;
+});
+document.getElementById('wvShape').onchange=e=>{
+  document.getElementById('wvCycLbl').textContent = e.target.value==='sh' ? 'Pasos' : 'Ciclos';
+};
+let wvColor=1;
+document.getElementById('wvColW').onclick=()=>{wvColor=1;document.getElementById('wvColW').classList.add('active');document.getElementById('wvColB').classList.remove('active');};
+document.getElementById('wvColB').onclick=()=>{wvColor=0;document.getElementById('wvColB').classList.add('active');document.getElementById('wvColW').classList.remove('active');};
+
+function genWave(){
+  const shape=document.getElementById('wvShape').value;
+  const w=+document.getElementById('wvW').value;
+  const h=+document.getElementById('wvH').value;
+  const cycles=+document.getElementById('wvCyc').value;
+  const phase=(+document.getElementById('wvPhase').value)/100;
+  const thick=+document.getElementById('wvThick').value;
+  const data=new Uint8Array(w*h);
+  const m=Math.floor((thick-1)/2)+1;          // margen para que el grosor no se corte
+  const yTop=m-1, yBot=h-m;                    // rango vertical de la onda
+  const amp=Math.max(1,yBot-yTop);
+  const set=(x,y)=>{ if(x>=0&&x<w&&y>=0&&y<h) data[y*w+x]=1; };
+  const plot=(x,y)=>{ const r=Math.floor((thick-1)/2);
+    for(let dy=-r;dy<=thick-1-r;dy++)for(let dx=-r;dx<=thick-1-r;dx++)set(x+dx,y+dy); };
+  // valor normalizado v∈[0,1] (1 = arriba) según x
+  let shVals=null;
+  if(shape==='sh'){ shVals=[]; for(let i=0;i<cycles;i++)shVals.push(Math.random()); }
+  function v(x){
+    const t=w>1?x/(w-1):0;
+    const u=((t*cycles+phase)%1+1)%1;
+    switch(shape){
+      case 'square': return u<0.5?1:0;
+      case 'sin':    return (Math.sin(2*Math.PI*(t*cycles+phase))+1)/2;
+      case 'ramp':   return u;
+      case 'iramp':  return 1-u;
+      case 'sh':{ let step=Math.floor((t*cycles+phase))%cycles; step=((step%cycles)+cycles)%cycles; return shVals[step]; }
+    }
+  }
+  const yOf=val=>Math.round(yTop+(1-val)*amp);
+  let prev=null;
+  for(let x=0;x<w;x++){
+    const y=yOf(v(x));
+    const y0=(prev===null)?y:Math.min(prev,y);
+    const y1=(prev===null)?y:Math.max(prev,y);
+    for(let yy=y0;yy<=y1;yy++)plot(x,yy);   // tramo vertical recto por columna
+    prev=y;
+  }
+  stamp={w,h,data,color:wvColor,ghost:{x:Math.floor((W-w)/2),y:Math.floor((H-h)/2)}};
+  render();
+  status.textContent='Haz clic en el lienzo para fijar — Esc para cancelar';
+}
+document.getElementById('btnStampWave').onclick=genWave;
+
+// ---------- campo dinámico BPM ----------
+let bpmAlign='center';
+document.getElementById('bpmSize').oninput=e=>{document.getElementById('bpmSizeV').textContent=e.target.value;syncField();};
+document.getElementById('bpmThr').oninput=e=>{document.getElementById('bpmThrV').textContent=e.target.value;syncField();};
+document.getElementById('bpmSample').oninput=syncField;
+document.getElementById('bpmFont').onchange=syncField;
+function setAlign(a){bpmAlign=a;
+  document.getElementById('bpmAlL').classList.toggle('active',a==='left');
+  document.getElementById('bpmAlC').classList.toggle('active',a==='center');
+  document.getElementById('bpmAlR').classList.toggle('active',a==='right');
+  syncField();}
+document.getElementById('bpmAlL').onclick=()=>setAlign('left');
+document.getElementById('bpmAlC').onclick=()=>setAlign('center');
+document.getElementById('bpmAlR').onclick=()=>setAlign('right');
+function syncField(){
+  if(!bpmField)return;
+  bpmField.font=document.getElementById('bpmFont').value;
+  bpmField.size=+document.getElementById('bpmSize').value;
+  bpmField.thr=+document.getElementById('bpmThr').value;
+  bpmField.align=bpmAlign;
+  bpmField.sample=document.getElementById('bpmSample').value;
+  render();
+}
+document.getElementById('btnPlaceField').onclick=e=>{
+  placingField=!placingField;
+  e.target.classList.toggle('active',placingField);
+  e.target.textContent=placingField?'Arrastra en el lienzo…':'Definir caja (arrastrar en el lienzo)';
+  status.textContent=placingField?'Arrastra para dibujar la caja del BPM':'';
+};
+document.getElementById('btnClearField').onclick=()=>{bpmField=null;render();};
+
+// rasteriza la muestra a 1 bit y calcula su posición dentro de la caja
+function rasterizeBpm(){
+  if(!bpmField)return null;
+  const{font,size,thr,sample}=bpmField;
+  const off=document.createElement('canvas'),oc=off.getContext('2d');
+  oc.font=size+'px "'+font+'"';
+  const m=oc.measureText(sample||' ');
+  const asc=Math.ceil(m.actualBoundingBoxAscent||size*0.8);
+  const desc=Math.ceil(m.actualBoundingBoxDescent||size*0.25);
+  const tw=Math.max(1,Math.ceil(m.width)), th=asc+desc+2;
+  off.width=tw+2; off.height=th;
+  oc.font=size+'px "'+font+'"';oc.fillStyle='#fff';oc.textBaseline='alphabetic';
+  oc.fillText(sample,1,asc+1);
+  const d=oc.getImageData(0,0,off.width,off.height).data;
+  const data=new Uint8Array(off.width*off.height);
+  for(let i=0;i<data.length;i++)data[i]=d[i*4]>thr?1:0;
+  // posición dentro de la caja
+  let ox;
+  if(bpmField.align==='left')ox=bpmField.x;
+  else if(bpmField.align==='right')ox=bpmField.x+bpmField.w-off.width;
+  else ox=bpmField.x+Math.round((bpmField.w-off.width)/2);
+  const oy=bpmField.y+Math.round((bpmField.h-off.height)/2);
+  return {data,w:off.width,h:off.height,ox,oy,baselineY:oy+asc+1};
+}
+function drawBpmOverlay(){
+  const f=bpmField;
+  // caja reservada (línea discontinua)
+  ctx.save();
+  ctx.setLineDash([4,3]);
+  ctx.strokeStyle='rgba(159,208,255,.8)';ctx.lineWidth=1;
+  ctx.strokeRect(f.x*zoom+.5,f.y*zoom+.5,f.w*zoom-1,f.h*zoom-1);
+  ctx.restore();
+  // muestra rasterizada en tinte distinto (no es parte del bitmap)
+  const r=rasterizeBpm();
+  if(r){
+    ctx.fillStyle='rgba(255,196,120,.92)';
+    for(let yy=0;yy<r.h;yy++)for(let xx=0;xx<r.w;xx++){
+      if(!r.data[yy*r.w+xx])continue;
+      const gx=r.ox+xx,gy=r.oy+yy;
+      if(inB(gx,gy))ctx.fillRect(gx*zoom,gy*zoom,zoom,zoom);
+    }
+  }
+  // caja en construcción
+  if(drag&&drag.mode==='bpmbox'){
+    const xa=Math.min(drag.x0,drag.x1),ya=Math.min(drag.y0,drag.y1);
+    const w=Math.abs(drag.x1-drag.x0)+1,h=Math.abs(drag.y1-drag.y0)+1;
+    ctx.save();ctx.setLineDash([2,2]);ctx.strokeStyle='rgba(255,196,120,.9)';
+    ctx.strokeRect(xa*zoom+.5,ya*zoom+.5,w*zoom-1,h*zoom-1);ctx.restore();
+  }
+}
+
+// ---------- fotogramas ----------
+document.getElementById('btnAddFrame').onclick=()=>{frames.splice(cur+1,0,new Uint8Array(W*H));cur++;undoStack=[];render();};
+document.getElementById('btnDupFrame').onclick=()=>{frames.splice(cur+1,0,buf().slice());cur++;undoStack=[];render();};
+document.getElementById('btnDelFrame').onclick=()=>{
+  if(frames.length===1){buf().fill(0);render();return;}
+  frames.splice(cur,1);cur=Math.min(cur,frames.length-1);undoStack=[];render();
+};
+document.getElementById('btnPlay').onclick=e=>{
+  if(playTimer){clearInterval(playTimer);playTimer=null;e.target.textContent='▶ Reproducir';render();return;}
+  let i=0;
+  const fps=Math.min(30,Math.max(1,+document.getElementById('fps').value||12));
+  e.target.textContent='⏸ Detener';
+  playTimer=setInterval(()=>{renderReal(frames[i%frames.length]);i++;},1000/fps);
+};
+document.getElementById('onion').onchange=()=>render();
+
+// ---------- exportar ----------
+function framePng(b,scale){
+  const c=document.createElement('canvas');c.width=W*scale;c.height=H*scale;
+  const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,c.width,c.height);
+  x.fillStyle='#fff';
+  for(let y=0;y<H;y++)for(let px=0;px<W;px++)
+    if(b[idx(px,y)])x.fillRect(px*scale,y*scale,scale,scale);
+  return c;
+}
+function dl(canvas,name){
+  canvas.toBlob(blob=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=name;a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  });
+}
+document.getElementById('btnPng1').onclick=()=>dl(framePng(buf(),1),`oled_${W}x${H}_f${cur+1}.png`);
+document.getElementById('btnPng8').onclick=()=>dl(framePng(buf(),8),`oled_${W}x${H}_f${cur+1}_8x.png`);
+document.getElementById('btnPngAll').onclick=()=>{
+  frames.forEach((f,i)=>setTimeout(()=>dl(framePng(f,1),`oled_${W}x${H}_f${String(i+1).padStart(3,'0')}.png`),i*250));
+};
+function bgToCArray(b,name){
+  const bytesPerRow=Math.ceil(W/8), bytes=[];
+  for(let y=0;y<H;y++)for(let bx=0;bx<bytesPerRow;bx++){
+    let v=0;
+    for(let bit=0;bit<8;bit++){const x=bx*8+bit;if(x<W&&b[idx(x,y)])v|=0x80>>bit;}
+    bytes.push(v);
+  }
+  const hex=bytes.map(v=>'0x'+v.toString(16).padStart(2,'0'));
+  const rows=[];for(let i=0;i<hex.length;i+=bytesPerRow)rows.push('  '+hex.slice(i,i+bytesPerRow).join(', '));
+  return `static const unsigned char PROGMEM ${name}[] = {\n${rows.join(',\n')}\n};`;
+}
+function handoffCode(){
+  let b=buf();
+  if(bpmField){ // la zona reservada sale limpia en el bitmap
+    b=b.slice();
+    for(let y=bpmField.y;y<bpmField.y+bpmField.h;y++)
+      for(let x=bpmField.x;x<bpmField.x+bpmField.w;x++)
+        if(inB(x,y))b[idx(x,y)]=0;
+  }
+  const bg=bgToCArray(b,'screen_bg');
+  let snippet;
+  if(bpmField){
+    const f=bpmField;
+    const r=rasterizeBpm();
+    const baseY=r?r.baselineY:(f.y+f.h);
+    const fontNote = f.font.startsWith('custom-')
+      ? `  // Fuente del disenador: convierte tu TTF a GFX (.h) y haz setFont(&TuFuente).\n  // display.setFont(&TuFuente${f.size}pt7b);`
+      : `  // Fuente: integrada de GFX. setTextSize aproxima ${f.size}px (~${Math.max(1,Math.round(f.size/8))}x).\n  display.setTextSize(${Math.max(1,Math.round(f.size/8))});`;
+    let cursorCode;
+    if(f.align==='center')
+      cursorCode=
+`  int16_t bx, by; uint16_t bw, bh;
+  display.getTextBounds(buf, 0, 0, &bx, &by, &bw, &bh);
+  display.setCursor(${f.x} + (${f.w} - (int)bw)/2 - bx, ${baseY});`;
+    else if(f.align==='right')
+      cursorCode=
+`  int16_t bx, by; uint16_t bw, bh;
+  display.getTextBounds(buf, 0, 0, &bx, &by, &bw, &bh);
+  display.setCursor(${f.x} + ${f.w} - (int)bw - bx, ${baseY});`;
+    else
+      cursorCode=`  display.setCursor(${f.x}, ${baseY});`;
+    snippet=
+`// --- BPM en vivo (caja reservada: x=${f.x} y=${f.y} w=${f.w} h=${f.h}, ${f.align}) ---
+void drawBpm(int bpm) {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%d", bpm);
+${fontNote}
+  display.setTextColor(SSD1306_WHITE);
+${cursorCode}
+  display.print(buf);
+  display.setFont(NULL);   // vuelve a la fuente integrada si la cambiaste
+}`;
+  } else {
+    snippet=`// (No definiste caja de BPM. Usa "Definir caja" en el panel para generar el snippet.)`;
+  }
+  return `// ============================================================
+//  Handoff para Arduino (RP2040 / arduino-pico + Adafruit_SSD1306)
+//  Pantalla ${W}x${H} @ 0x3C. Fondo estatico = bitmap. BPM = texto en vivo.
+// ============================================================
+${bg}
+
+${snippet}
+
+// --- Rutina de refresco (llamala al cambiar el BPM, no en cada loop) ---
+void refresh(int bpm) {
+  display.clearDisplay();
+  display.drawBitmap(0, 0, screen_bg, ${W}, ${H}, SSD1306_WHITE);
+${bpmField?'  drawBpm(bpm);':''}
+  display.display();
+}`;
+}
+document.getElementById('btnGenCode').onclick=()=>{
+  const fmt=document.getElementById('codeFmt').value, b=buf();
+  const bytesPerRow=Math.ceil(W/8);
+  let out='';
+  if(fmt==='handoff'){
+    out=handoffCode();
+  }else if(fmt==='carray'||fmt==='xbm'){
+    const bytes=[];
+    for(let y=0;y<H;y++)for(let bx=0;bx<bytesPerRow;bx++){
+      let v=0;
+      for(let bit=0;bit<8;bit++){
+        const x=bx*8+bit;
+        if(x<W&&b[idx(x,y)]){
+          if(fmt==='carray')v|=0x80>>bit;   // MSB primero (drawBitmap)
+          else v|=1<<bit;                    // LSB primero (XBM)
+        }
+      }
+      bytes.push(v);
+    }
+    const hex=bytes.map(v=>'0x'+v.toString(16).padStart(2,'0'));
+    const rows=[];for(let i=0;i<hex.length;i+=bytesPerRow)rows.push('  '+hex.slice(i,i+bytesPerRow).join(', '));
+    if(fmt==='carray')
+      out=`// frame ${cur+1} — ${W}x${H}, formato Adafruit GFX drawBitmap\nstatic const unsigned char PROGMEM frame_${cur+1}[] = {\n${rows.join(',\n')}\n};`;
+    else
+      out=`#define frame_width ${W}\n#define frame_height ${H}\nstatic unsigned char frame_bits[] = {\n${rows.join(',\n')}\n};`;
+  }else{
+    const rows=[];
+    for(let y=0;y<H;y++){
+      const r=[];for(let x=0;x<W;x++)r.push(b[idx(x,y)]);
+      rows.push('  ['+r.join(',')+']');
+    }
+    out=`# frame ${cur+1} — ${W}x${H}, 1 = píxel encendido\n# uso: for y,fila in enumerate(FRAME):\n#        for x,v in enumerate(fila):\n#          if v: draw.point((x,y), fill=255)\nFRAME = [\n${rows.join(',\n')}\n]`;
+  }
+  document.getElementById('codeOut').value=out;
+};
+
+// ---------- demo inicial: pantalla parecida a la del módulo ----------
+function seed(){
+  const b=buf();
+  // "120" grande arriba con la fuente integrada simulada (bloques)
+  const off=document.createElement('canvas'), oc=off.getContext('2d');
+  off.width=W; off.height=H;
+  oc.fillStyle='#fff';
+  oc.font='bold 20px monospace'; oc.textBaseline='top';
+  oc.fillText('120',6,2);
+  oc.font='10px monospace';
+  oc.fillText('BPM',86,10);
+  const d=oc.getImageData(0,0,W,H);
+  for(let i=0;i<W*H;i++)if(d.data[i*4]>120)b[i]=1;
+  dLine(b,0,28,W-1,28,1);
+  // onda seno A
+  let py=null;
+  for(let x=6;x<70;x++){const y=Math.round(40+6*Math.sin((x-6)/6));if(py!==null)dLine(b,x-1,py,x,y,1);py=y;}
+  // onda seno B más lenta
+  py=null;
+  for(let x=6;x<70;x++){const y=Math.round(56+5*Math.sin((x-6)/14));if(py!==null)dLine(b,x-1,py,x,y,1);py=y;}
+  const oc2=off.getContext('2d');
+  oc2.clearRect(0,0,W,H);
+  oc2.font='9px monospace';oc2.fillStyle='#fff';oc2.textBaseline='top';
+  oc2.fillText('1/1',78,36);oc2.fillText('4',78,52);
+  const d2=oc2.getImageData(0,0,W,H);
+  for(let i=0;i<W*H;i++)if(d2.data[i*4]>120)b[i]=1;
+}
+
+resize(); seed(); render();
+})();
+</script>
+</body>
+</html>
